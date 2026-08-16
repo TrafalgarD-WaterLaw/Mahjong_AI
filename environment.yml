@@ -1,0 +1,23 @@
+name: mahjong_ai
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.4
+  - pip
+  - pip:
+    - opencv-python==4.10.0.84
+    - ultralytics
+    - onnxruntime
+    - pytest
+    - pytest-cov
+    - ruff
+    - mypy
+    - mss
+    - pyside6

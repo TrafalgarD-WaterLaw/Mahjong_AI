@@ -1,0 +1,20 @@
+# ByteTrack 配置(麻将屏幕专用) — 相对 ultralytics 默认:
+# new_track_thresh 0.6 → 0.25: 新牌(conf 0.3-0.6 常见)默认被
+# 跟踪器拒绝创建轨迹, 新牌 ID 出不来 → "检测不到"。降到 0.25
+# 让低 conf 新牌也进跟踪(之后轨迹置信度由检测连续帧提升)。
+tracker_type: bytetrack
+# track_low_thresh 0.1 → 0.05: 静止牌 conf 在 0.1 附近波动时,
+# 高于此阈值的帧才进跟踪 — 阈值 0.1 会让 conf 0.05-0.1 的帧
+# "不进跟踪" → 轨迹靠预测维持, 表现为时断时续
+track_high_thresh: 0.35
+track_low_thresh: 0.05
+# new_track_thresh 0.25 → 0.15: 新牌 conf 0.15-0.25 时也能创建
+# 轨迹 — 新牌更快被跟踪(减少"打出来过一会才检测到")
+new_track_thresh: 0.15
+# track_buffer 30(默认) → 120(8 秒): 漏检的牌 ID 保持更久 —
+# 漏检是检测器的常态(recall 74%), 短 buffer 会让 ID 频繁释放,
+# 重现的牌被当新牌 → 归错行动者 → 轮转错位连锁。8 秒内的漏检
+# 重现时仍是旧 ID, 身份继承, 不触发假事件
+track_buffer: 120
+match_thresh: 0.8
+fuse_score: True

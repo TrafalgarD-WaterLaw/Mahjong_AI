@@ -1,0 +1,33 @@
+# 虚拟环境
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# 开发过程工件(子代理任务台账)
+.superpowers/
+
+# 训练产物(ultralytics runs)
+runs/
+
+# 数据(模型权重/训练截图/对局日志/预览 — 均不上传, 见 README §快速开始)
+data/
+settle.png
+
+# 日志
+*.jsonl
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 模型权重(含 ultralytics 自动下载的预训练权重)
+*.pt
