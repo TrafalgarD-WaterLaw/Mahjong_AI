@@ -6,14 +6,14 @@
 
 交互:
     左键 按顺序点选 4 个点: ①我的牌河 ②右家牌河 ③上家牌河 ④左家牌河
-    — 之后 normalize_anchors 做横平竖直 + 以十字交点(上下连线与
+    — 锚点横平竖直 + 十字交点(上下连线与
     左右连线的交点)为圆心等距化。
     R    撤销上一个点
     S    保存到 config/river_anchors.json
     Esc  取消(不保存)
 
 保存的坐标为归一化(相对选点帧尺寸), 运行时乘回当前帧尺寸 —
-窗口缩放/分辨率变化自动适配。之后 run_assistant 与 visualize_cluster
+窗口缩放/分辨率变化自动适配。之后 run_assistant
 加载该配置做最近归属。
 """
 
@@ -30,7 +30,7 @@ from src.mahjong_ai.state.snapshot import RIVER_NAMES  # noqa: E402
 
 DEFAULT_OUT = Path('config/river_anchors.json')
 
-#: 选点顺序与提示色(与 visualize_cluster 归属色一致)
+#: 选点顺序与提示色(与客户端牌河区一致)
 _ORDER = [
     ('my_river', '我的牌河', (0, 215, 255)),
     ('right_river', '右家牌河', (0, 0, 255)),
@@ -150,7 +150,7 @@ def main() -> None:
     for name, (x, y) in anchors.items():
         px, py = pixels[name]
         print(f'  {name}: 像素({px}, {py}) → 归一化({x:.3f}, {y:.3f})')
-    print('提示: 之后运行 scripts/normalize_anchors.py 做横平竖直 + 十字交点等距化')
+    print('提示: 锚点可手动微调至横平竖直')
 
 
 if __name__ == '__main__':

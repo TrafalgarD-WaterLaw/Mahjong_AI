@@ -1,6 +1,6 @@
 """PIL 中文文本叠加 — cv2.putText 不支持中文, 用 PIL 渲染后合回。
 
-训练链工具(label_review/pick_anchors/pick_regions/visualize_fp)的
+训练链工具(label_review/pick_anchors/pick_regions)的
 提示文字渲染共用此模块。
 """
 
