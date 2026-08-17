@@ -8,6 +8,30 @@
 ![Tests](https://img.shields.io/badge/tests-359%20passed-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
+## 目录
+
+- [核心功能](#核心功能)
+- [它解决什么问题](#它解决什么问题)
+- [技术难点与方案](#技术难点与方案)
+- [系统架构](#系统架构)
+- [量化验证](#量化验证)
+- [目录结构](#目录结构)
+- [快速开始](#快速开始)
+- [训练自己的模型](#训练自己的模型)
+- [技术栈](#技术栈)
+- [未来规划](#未来规划)
+
+## 核心功能
+
+- 🎯 **实时牌桌理解** — 截屏 → 检测/跟踪/识别 → 四家牌河 + 副露 + 手牌,抽象为毫秒级事件流
+- 🔮 **对手隐藏手牌推断** — 粒子滤波实时估计三家手牌,输出听牌概率 / 最可能等待牌 / 放铳率
+- 💡 **出牌推荐** — 向听数优先 + 有效进张枚数,附推荐理由("打出 9饼 后 1 向听, 有效进张 28 枚")
+- 🛡️ **放铳预警** — 候选牌三家放铳率实时显示,高危险牌标红
+- 🖥️ **自适应面板** — 三档布局(窄条/牌桌/宽屏)+ 降级链,任意窗口尺寸不挤不溢出
+- 📊 **离线评估** — 合成对局模拟器 + 真值对比,量化验证推断能力
+
+![界面预览](assets/demo.png)
+
 ## 它解决什么问题
 
 从游戏界面里,要回答三个问题——而每一个都比看起来难:
@@ -17,8 +41,6 @@
 3. **"对手手里有什么?"** — 永远看不到。只能从"他打了什么、没打什么"反推——一个信息不完备的贝叶斯推断问题。
 
 **核心思路:不把检测当真相,把不可靠的视觉信号抽象成事件流,再用时间约束做全局解码。**
-
-![界面预览](assets/demo.png)
 
 ## 技术难点与方案
 
@@ -90,8 +112,29 @@ uv run python scripts/run_assistant.py
 > 模型权重与训练数据不在本仓库(`data/` 已排除)。目录约定:
 > `data/models/screen/mahjong_screen_detector/weights/best.pt`(检测器)、
 > `data/models/roi_cls/weights/best.pt`(ROI 分类器)。
-> 训练链: 截图采集 → 人工审核 → 训练(scripts/ 下对应脚本)。
 > 首次运行按提示用 `pick_regions.py`(8 区域框选)完成桌面标定。
+
+## 训练自己的模型
+
+系统使用两级识别:检测器(yolov8m)找牌框 → ROI 分类器(yolov8n-cls)精修牌面类别。两条训练链:
+
+**屏幕检测器**:
+
+```bash
+uv run python scripts/capture_dataset.py --frames 2000   # 1. 采集游戏截图
+uv run python scripts/label_review.py                    # 2. 人工审核打标
+uv run python scripts/build_dataset_yaml.py              # 3. 拆分 train/val + data.yaml
+uv run python scripts/train_screen_yolo.py               # 4. 训练检测器
+```
+
+**ROI 牌面分类器**(检测框裁剪 → 放大特写分类):
+
+```bash
+uv run python scripts/build_roi_dataset.py   # 1. 从检测框裁剪构建数据集(含背景类)
+uv run python scripts/train_roi_cls.py       # 2. 训练分类器
+```
+
+输出自动同步到 `data/models/` 固定路径,重启 `run_assistant.py` 即生效。
 
 ## 技术栈
 
