@@ -71,7 +71,7 @@ uv run python scripts/run_assistant.py
 > `data/models/screen/mahjong_screen_detector/weights/best.pt`(检测器)、
 > `data/models/roi_cls/weights/best.pt`(ROI 分类器)。
 > 训练链: `capture_dataset.py`(截图采集)→ `label_review.py`(人工审核)→ 训练。
-> 首次运行按提示用 `pick_regions.py`(8 区域框选)与 `pick_anchors.py`(4 锚点)完成桌面标定。
+> 首次运行按提示用 `pick_regions.py`(8 区域框选)完成桌面标定。
 
 ## 技术栈
 
