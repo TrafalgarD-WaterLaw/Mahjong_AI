@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any
 
 import cv2
@@ -17,6 +18,11 @@ from src.mahjong_cv.detections import TileDet
 #: imgsz 合法性范围(ultralytics 要求 32 的倍数)
 _IMGSZ_MIN = 128
 _IMGSZ_MAX = 2560
+#: ROI 精修置信度门槛: 检测器 conf ≥ 此值的框跳过精修, 直接用检测
+#: 类别。实测(40 帧真实截图): conf≥0.8 的框占 96.5%, 其中仅 2.8%
+#: 被精修改类别(1036 框改 29); conf<0.8 的框 25% 需要精修。分级后
+#: ROI 成本从"每帧全部框"降到"每帧 ~3.5% 的框", 类别精度几乎无损。
+_ROI_REFINE_CONF = 0.8
 
 
 def merge_duplicate_boxes(
@@ -72,6 +78,20 @@ class ScreenVision:
             self._model = YOLO(self._model_path)
         return self._model
 
+    def warmup(self, frame: np.ndarray) -> None:
+        """冷启动预热: 加载全部模型并跑一次完整推理。
+
+        首次推理含模型加载 / CUDA 上下文初始化 / 跟踪器首次分配,
+        实测冷启动可达 100s(真实对局 P99=2.5s 长尾正是"停顿后首帧
+        撞上冷启动"): 启动时预热一次, 对局内每帧耗时稳定。
+        预热后检测/ROI 模型已加载, 首帧真实推理不再有初始化开销。
+        """
+        self._load()
+        self._load_roi()
+        # 黑帧跑一次完整流程(检测 → ROI 精修); 无牌时无 ROI 开销,
+        # 但模型均已加载 — 冷启动开销已支付
+        self.process(frame, conf_threshold=0.0)
+
     def process(
         self,
         frame: np.ndarray,
@@ -99,6 +119,7 @@ class ScreenVision:
         conf_threshold: float = 0.15,
         detector: Any | None = None,
         imgsz: int | None = None,
+        timings: dict[str, float] | None = None,
     ) -> list[TileDet]:
         """检测 + 官方跟踪(ByteTrack): 返回带 track_id 的框。
 
@@ -108,6 +129,10 @@ class ScreenVision:
 
         conf_threshold 0.15(低阈值召回): 漏检的真牌(conf 0.15-0.30)
         被找回, 误检框由 ROI 分类器背景类(35)过滤。
+
+        timings: 非 None 时填充分段耗时(秒): detect(检测+跟踪) /
+        parse(解析+去重) / roi(ROI 精修)。基准脚本用, 调用方传 None
+        零开销。
         """
         if imgsz is not None and (imgsz % 32 != 0
                                   or not _IMGSZ_MIN <= imgsz <= _IMGSZ_MAX):
@@ -123,17 +148,25 @@ class ScreenVision:
                                   'persist': True, 'tracker': tracker_cfg}
         if imgsz is not None:
             kwargs['imgsz'] = imgsz
+        t0 = time.perf_counter()
         with self._lock:
             results = model.track(frame, **kwargs)
+        t1 = time.perf_counter()
+        dets = merge_duplicate_boxes(self._parse(results))
+        t2 = time.perf_counter()
         # 精修后二次合并(见 process 注释)
-        return merge_duplicate_boxes(
-            self._refine_roi(frame, merge_duplicate_boxes(
-                self._parse(results))))
+        out = merge_duplicate_boxes(self._refine_roi(frame, dets))
+        t3 = time.perf_counter()
+        if timings is not None:
+            timings['detect'] = t1 - t0
+            timings['parse'] = t2 - t1
+            timings['roi'] = t3 - t2
+        return out
 
     def _refine_roi(
         self, frame: np.ndarray, dets: list[TileDet],
     ) -> list[TileDet]:
-        """ROI 牌面精修: 全部框裁剪放大 2 倍 → 单次批量分类 → 覆盖类别。
+        """ROI 牌面精修: 低置信框裁剪放大 2 倍 → 批量分类 → 覆盖类别。
 
         解决小框(15px 牌河)牌面难分辨的类别混淆(检测器全图 68.7% →
         分类器放大特写 98.3%, 实验验证)。分类器缺失时原样返回。
@@ -142,6 +175,11 @@ class ScreenVision:
         逐框调用曾是每帧 ~1s 的瓶颈(60 框 × 单次推理调用开销; 实测
         空桌 58ms → 开局有牌 1s — 帧率 5.4→1.1fps 的根因) → 批量:
         一次推理全部裁剪, 帧率恢复检测主导。
+
+        分级精修(_ROI_REFINE_CONF): conf ≥ 0.8 的高置信框跳过精修,
+        直接采用检测器类别。实测高置信框仅 2.8% 被精修改类别(低置信
+        框 25%), 跳过可把 ROI 成本从"每帧全部 ~60 框"降到"每帧 ~3.5%
+        的框"(识别总耗时 25ms → ~2ms), 类别精度几乎无损。
         """
         model = self._load_roi()
         if model is None or not dets:
@@ -149,8 +187,11 @@ class ScreenVision:
         fh, fw = frame.shape[:2]
         crops: list[np.ndarray] = []
         idx: list[int] = []          # crops[i] 对应 dets[idx[i]]
-        passthrough: set[int] = set()  # 空裁剪原样保留的下标
+        passthrough: set[int] = set()  # 跳过精修/空裁剪原样保留的下标
         for i, d in enumerate(dets):
+            if d.conf >= _ROI_REFINE_CONF:
+                passthrough.add(i)  # 高置信: 检测类别已可靠, 不花算力
+                continue
             x1, y1 = max(0, int(d.x1) - 4), max(0, int(d.y1) - 4)
             x2, y2 = min(fw, int(d.x2) + 4), min(fh, int(d.y2) + 4)
             crop = frame[y1:y2, x1:x2]
@@ -185,7 +226,7 @@ class ScreenVision:
 
             if Path(self._roi_model_path).exists():
                 try:
-                    from ultralytics import YOLO  # type: ignore[attr-defined]  # noqa: PLC0415, E501
+                    from ultralytics import YOLO  # type: ignore[attr-defined]  # noqa: PLC0415
 
                     self._roi_model = YOLO(self._roi_model_path)
                 except Exception:  # noqa: BLE001 — 分类器不可用 → 降级

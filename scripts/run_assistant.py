@@ -534,6 +534,12 @@ def main() -> None:
     client = MahjongClient()
     det_overlay = None if args.no_dets else DetOverlay(cap.client_rect)
     client.set_status('模型加载中...')
+    # 冷启动预热: 首次推理含模型加载/CUDA 初始化, 实测可达 100s —
+    # 不预热则对局首帧(或停顿后首帧)撞上冷启动, 真实日志表现为
+    # 识别 P99=2.5s 长尾。预热一次后对局内每帧耗时稳定。
+    warm_frame = np.zeros((824, 1409, 3), dtype=np.uint8)
+    pipe.warmup(warm_frame)
+    client.set_status('就绪')
     runner = AssistantRunner(cap=cap, recognize=recognize, client=client,
                       det_overlay=det_overlay, log_dir=args.log_dir)
 
