@@ -34,3 +34,8 @@ Thumbs.db
 
 # 设计文档(不入库 — 个人项目文档, 与简历展示无关)
 docs/
+
+# 简历素材(个人求职材料, 不上传)
+RESUME_MATERIAL.md
+RESUME_PROJECT_DESCRIPTION.md
+RESUME_SKILLS.md
